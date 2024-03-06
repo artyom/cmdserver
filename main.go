@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/artyom/httpgzip"
@@ -36,7 +35,7 @@ func run(addr string, reload int, cmdargs []string) error {
 		return errors.New("need command and its arguments to call")
 	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /", httpgzip.New(&handler{cmdargs: cmdargs, reload: reload}))
+	mux.Handle("GET /", httpgzip.New(&handler{cmdargs: cmdargs, reload: reload, sema: make(chan struct{}, 1)}))
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
@@ -49,12 +48,17 @@ func run(addr string, reload int, cmdargs []string) error {
 type handler struct {
 	cmdargs []string
 	reload  int
-	mu      sync.Mutex
+	sema    chan struct{}
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	select {
+	case h.sema <- struct{}{}:
+		defer func() { <-h.sema }()
+	case <-r.Context().Done():
+		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		return
+	}
 	if h.reload > 0 {
 		w.Header().Set("Refresh", strconv.Itoa(h.reload))
 	}
