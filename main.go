@@ -62,6 +62,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.reload > 0 {
 		w.Header().Set("Refresh", strconv.Itoa(h.reload))
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	cmd := exec.CommandContext(r.Context(), h.cmdargs[0], h.cmdargs[1:]...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
